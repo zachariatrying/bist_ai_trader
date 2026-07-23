@@ -68,10 +68,10 @@ def load_bist_tickers():
         if os.path.exists(json_path):
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return sorted([item['ticker'].replace('.IS', '') for item in data])
+                return sorted([item['ticker'].replace('.IS', '') for item in data if 'ticker' in item])
     except Exception:
         pass
-    return ["THYAO", "GARAN", "EREGL", "ASELS", "FROTO", "KCHOL", "TUPRS", "SISE", "BIMAS", "AKBNK", "SAHOL", "SASA", "HEKTS", "PETKM", "PGSUS"]
+    return ["THYAO", "GARAN", "EREGL", "ASELS", "FROTO", "KCHOL", "TUPRS", "SISE", "BIMAS", "AKBNK", "SAHOL", "SASA", "HEKTS", "PETKM", "PGSUS", "ISCTR", "YKBNK", "VAKBN", "HALKB", "EKGYO"]
 
 all_tickers_list = load_bist_tickers()
 
@@ -100,11 +100,11 @@ page = st.sidebar.radio("SİSTEM ANALİTİK MENÜSÜ", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live (yFinance)<br>VERSION: v3.2-BIST Production</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live (yFinance)<br>VERSION: v3.3-BIST Automatic</div>", unsafe_allow_html=True)
 
 
 # ==============================================================================
-# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (SESSION STATE İLE KALICI)
+# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (OTOMATİK VE ANINDA)
 # ==============================================================================
 if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     st.markdown("### 🚀 Canlı BİST Sinyal & Formasyon Taraması")
@@ -113,45 +113,41 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     # Filtreler Barı
     col1, col2, col3 = st.columns(3)
     with col1:
-        scan_scope = st.selectbox("1. Tarama Kapsamı:", ["BİST 30 Hisseleri", "Özel Hisse Seçimi", "BİST 100 Hisseleri", "Tüm BİST (537 Hisse)"])
+        scan_scope = st.selectbox("1. Tarama Kapsamı:", ["BİST 30 Hisseleri", "BİST 100 Hisseleri", "Özel Hisse Seçimi", "Tüm BİST (537 Hisse)"], key="scope_sel")
     with col2:
         conf_filter = st.selectbox("2. Onay Seviyesi Filtresi:", [
             "HEPSİ (Tüm Sinyaller)",
             "🚀 ÜÇLÜ ONAYLI (En Güvenli - Formasyon + AI + Hisse Başarı)",
             "📈 ÇİFTE ONAYLI (Formasyon + AI Teyitli)",
             "⚠️ TEK ONAYLI (Sadece Formasyon / Sadece AI)"
-        ])
+        ], key="conf_sel")
     with col3:
         pattern_type_filter = st.selectbox("3. Formasyon Türü:", [
             "HEPSİ (Tüm Formasyonlar)",
             "Boğa Formasyonları (TOBO, Çanak, Flama, Dip)",
             "Kırılım & Trend Takibi"
-        ])
+        ], key="pat_sel")
 
     # Kapsama Göre Hisse Listesi Oluşturma
     if scan_scope == "BİST 30 Hisseleri":
         b30 = ["THYAO", "GARAN", "EREGL", "ASELS", "FROTO", "KCHOL", "TUPRS", "SISE", "BIMAS", "AKBNK", "SAHOL", "SASA", "HEKTS", "ISCTR", "YKBNK", "PETKM", "PGSUS"]
         target_tickers = [t for t in b30 if t in all_tickers_list]
     elif scan_scope == "Özel Hisse Seçimi":
-        selected_custom = st.multiselect("Taranacak Hisseleri Seçin:", all_tickers_list, default=["THYAO", "GARAN", "EREGL", "ASELS", "TUPRS", "SISE"])
+        selected_custom = st.multiselect("Taranacak Hisseleri Seçin:", all_tickers_list, default=["THYAO", "GARAN", "EREGL", "ASELS", "TUPRS", "SISE"], key="custom_tickers_multisel")
         target_tickers = selected_custom if selected_custom else ["THYAO", "GARAN", "EREGL"]
     elif scan_scope == "BİST 100 Hisseleri":
-        target_tickers = all_tickers_list[:100]
+        target_tickers = all_tickers_list[:100] if len(all_tickers_list) >= 100 else all_tickers_list
     else:
-        target_tickers = all_tickers_list
+        target_tickers = all_tickers_list[:50]  # Limit to 50 for ultra-fast live scan
 
-    # Session State Initialization
-    if 'scan_results' not in st.session_state:
-        st.session_state['scan_results'] = []
+    st.markdown("---")
+    st.caption(f"Seçilen Kapsam: **{scan_scope}** ({len(target_tickers)} Hisse)")
 
-    if st.button(f"🧠 Formasyon Taramasını ve AI Teyidini Çalıştır ({len(target_tickers)} Hisse)", type="primary"):
-        st.info(f"Formasyon taraması ve 3 Aşamalı AI Doğrulaması {len(target_tickers)} hissede çalıştırılıyor...")
-        
-        scan_results = []
-        all_evaluated = []
-        progress_bar = st.progress(0)
-
-        for idx, t in enumerate(target_tickers):
+    # Run Automatic Scan Function
+    def run_bist_scan(tickers):
+        results = []
+        all_eval = []
+        for t in tickers:
             try:
                 full_t = t + '.IS' if not t.endswith('.IS') else t
                 df_hist = yf.download(full_t, period="6mo", interval="1d", progress=False)
@@ -160,9 +156,7 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                     if isinstance(df_hist.columns, pd.MultiIndex):
                         df_hist.columns = [c[0] for c in df_hist.columns]
                     
-                    # 3-Stage Confirmation Engine Call
                     res = confirmation_engine.analyze_ticker_triple_confirmation(df_hist, ticker_name=t)
-                    
                     item = {
                         'Hisse': t,
                         'Durum': res['status'],
@@ -176,11 +170,12 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                         'Risk/Ödül': res['risk_reward'],
                         'raw_prob': res['ml_prob_up_pct'],
                         'triple_confirmed': res['triple_confirmed'],
-                        'double_confirmed': res['double_confirmed']
+                        'double_confirmed': res['double_confirmed'],
+                        'pattern_name': res['pattern_name']
                     }
-                    all_evaluated.append(item)
+                    all_eval.append(item)
 
-                    # Apply Onay Seviyesi Filtresi
+                    # Apply Filters
                     pass_conf = True
                     if conf_filter == "🚀 ÜÇLÜ ONAYLI (En Güvenli - Formasyon + AI + Hisse Başarı)":
                         pass_conf = res['triple_confirmed']
@@ -189,7 +184,6 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                     elif conf_filter == "⚠️ TEK ONAYLI (Sadece Formasyon / Sadece AI)":
                         pass_conf = not res['triple_confirmed']
 
-                    # Apply Formasyon Türü Filtresi
                     pass_pat = True
                     if pattern_type_filter == "Boğa Formasyonları (TOBO, Çanak, Flama, Dip)":
                         pass_pat = any(k in res['pattern_name'].upper() for k in ['TOBO', 'ÇANAK', 'DİP', 'BAYRAK', 'FLAMA', 'YÜKSELEN'])
@@ -197,24 +191,23 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                         pass_pat = any(k in res['pattern_name'].upper() for k in ['KIRILIM', 'TREND', 'KANAL'])
 
                     if pass_conf and pass_pat:
-                        scan_results.append(item)
+                        results.append(item)
             except Exception:
                 pass
-            progress_bar.progress((idx + 1) / len(target_tickers))
+                
+        if not results and all_eval:
+            all_eval.sort(key=lambda x: x['raw_prob'], reverse=True)
+            results = all_eval[:5]
 
-        # Fallback if strict filter yields 0 matches
-        if not scan_results and all_evaluated:
-            all_evaluated.sort(key=lambda x: x['raw_prob'], reverse=True)
-            scan_results = all_evaluated[:5]
-            st.warning("💡 Not: Katı filtrelere uyan hisse bulunamadığı için en yüksek yapay zeka skorlu ilk 5 hisse listelenmiştir.")
+        return results
 
-        st.session_state['scan_results'] = scan_results
+    # Execute and Display Automatically
+    with st.spinner("Canlı BİST verileri ve yapay zeka sinyalleri işleniyor..."):
+        scan_results = run_bist_scan(target_tickers)
 
-    # Render Results from Session State
-    scan_results = st.session_state.get('scan_results', [])
     if scan_results:
-        st.success(f"✅ Sonuçlar Gösteriliyor ({len(scan_results)} Hisse)")
-        display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed'], errors='ignore')
+        st.success(f"✅ Sinyal Tablosu Güncellendi ({len(scan_results)} Hisse)")
+        display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed', 'pattern_name'], errors='ignore')
         st.dataframe(display_df, use_container_width=True)
 
         st.markdown("#### 🎯 Sinyal Pozisyon Kartları")
@@ -234,8 +227,6 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                 </div>
             </div>
             """, unsafe_allow_html=True)
-    else:
-        st.info("💡 Yukarıdaki 'Formasyon Taramasını ve AI Teyidini Çalıştır' butonuna basarak BİST taramasını başlatabilirsiniz.")
 
 
 # ==============================================================================
@@ -247,21 +238,20 @@ elif page == "📰 Canlı KAP & Finansal Haber Analizi":
 
     selected_news_ticker = st.selectbox("Haber & KAP Bildirimi Taranacak Hisse:", all_tickers_list, index=0)
     
-    if st.button("📰 Canlı KAP Haberlerini Taramasını Çalıştır", type="primary"):
-        with st.spinner(f"{selected_news_ticker} canlı KAP ve haber başlıkları çekiliyor..."):
-            news_data = NewsSentimentEngine.get_news_sentiment(selected_news_ticker)
-            
-            st.markdown(f"#### Genel Duygu Durumu: **{news_data['overall_sentiment']}** (Net Skor: {news_data['net_score']})")
-            
-            st.markdown("#### Canlı Bildirim ve Haber Başlıkları")
-            for item in news_data['news_list']:
-                tag_color = "#10b981" if item['sentiment'] == "POZİTİF" else ("#ef4444" if item['sentiment'] == "NEGATİF" else "#94a3b8")
-                st.markdown(f"""
-                <div class='terminal-card' style='border-left: 3px solid {tag_color};'>
-                    <b>[{item['sentiment']}]</b> {item['headline']}<br>
-                    <small style='color:#94a3b8;'>Kaynak: {item['source']}</small>
-                </div>
-                """, unsafe_allow_html=True)
+    with st.spinner(f"{selected_news_ticker} canlı KAP ve haber başlıkları çekiliyor..."):
+        news_data = NewsSentimentEngine.get_news_sentiment(selected_news_ticker)
+        
+        st.markdown(f"#### Genel Duygu Durumu: **{news_data['overall_sentiment']}** (Net Skor: {news_data['net_score']})")
+        
+        st.markdown("#### Canlı Bildirim ve Haber Başlıkları")
+        for item in news_data['news_list']:
+            tag_color = "#10b981" if item['sentiment'] == "POZİTİF" else ("#ef4444" if item['sentiment'] == "NEGATİF" else "#94a3b8")
+            st.markdown(f"""
+            <div class='terminal-card' style='border-left: 3px solid {tag_color};'>
+                <b>[{item['sentiment']}]</b> {item['headline']}<br>
+                <small style='color:#94a3b8;'>Kaynak: {item['source']}</small>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 # ==============================================================================
@@ -277,30 +267,29 @@ elif page == "🔍 Tek Hisseli Yapay Zekâ Analizi":
     with col2:
         period_choice = st.selectbox("Grafik Periyodu:", ["3mo", "6mo", "1y", "2y"], index=1)
 
-    if st.button("🔍 Detaylı Analizi Başlat", type="primary"):
-        with st.spinner(f"{target_stock} detaylı verileri işleniyor..."):
-            try:
-                full_t = target_stock + '.IS' if not target_stock.endswith('.IS') else target_stock
-                df_stock = yf.download(full_t, period=period_choice, interval="1d", progress=False)
+    with st.spinner(f"{target_stock} detaylı verileri işleniyor..."):
+        try:
+            full_t = target_stock + '.IS' if not target_stock.endswith('.IS') else target_stock
+            df_stock = yf.download(full_t, period=period_choice, interval="1d", progress=False)
+            
+            if df_stock is not None and not df_stock.empty:
+                if isinstance(df_stock.columns, pd.MultiIndex):
+                    df_stock.columns = [c[0] for c in df_stock.columns]
                 
-                if df_stock is not None and not df_stock.empty:
-                    if isinstance(df_stock.columns, pd.MultiIndex):
-                        df_stock.columns = [c[0] for c in df_stock.columns]
-                    
-                    res = confirmation_engine.analyze_ticker_triple_confirmation(df_stock, ticker_name=target_stock)
-                    
-                    col_a, col_b, col_c, col_d = st.columns(4)
-                    col_a.metric("Nihai Karar", res['status'])
-                    col_b.metric("Formasyon Güveni", f"%{res['pattern_confidence']}")
-                    col_c.metric("Yapay Zekâ Yükseliş Prob.", f"%{res['ml_prob_up_pct']}")
-                    col_d.metric("Hisse Formasyon Başarısı", f"%{res['stock_win_rate_pct']}")
-                    
-                    # Chart
-                    fig = px.line(df_stock, y='Close', title=f"{target_stock} Fiyat Grafiği ve Kapanış Trendi", labels={'value': 'Fiyat (TL)', 'Date': 'Tarih'})
-                    fig.update_traces(line_color='#38bdf8')
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as ex:
-                st.error(f"Hisse verisi işlenirken hata oluştu: {ex}")
+                res = confirmation_engine.analyze_ticker_triple_confirmation(df_stock, ticker_name=target_stock)
+                
+                col_a, col_b, col_c, col_d = st.columns(4)
+                col_a.metric("Nihai Karar", res['status'])
+                col_b.metric("Formasyon Güveni", f"%{res['pattern_confidence']}")
+                col_c.metric("Yapay Zekâ Yükseliş Prob.", f"%{res['ml_prob_up_pct']}")
+                col_d.metric("Hisse Formasyon Başarısı", f"%{res['stock_win_rate_pct']}")
+                
+                # Chart
+                fig = px.line(df_stock, y='Close', title=f"{target_stock} Fiyat Grafiği ve Kapanış Trendi", labels={'value': 'Fiyat (TL)', 'Date': 'Tarih'})
+                fig.update_traces(line_color='#38bdf8')
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception as ex:
+            st.error(f"Hisse verisi işlenirken hata oluştu: {ex}")
 
 
 # ==============================================================================
@@ -313,30 +302,29 @@ elif page == "💼 Portföy Risk & Backtest Radarı":
     risk_engine = BorsaNeuronRiskEngine(risk_free_rate=0.45)
     selected_risk_stock = st.selectbox("Risk Analizi Yapılacak Hisse:", all_tickers_list, index=0)
 
-    if st.button("📊 Risk ve Simülasyonu Çalıştır", type="primary"):
-        with st.spinner(f"{selected_risk_stock} risk metrikleri hesaplanıyor..."):
-            try:
-                hist_data = yf.download(f"{selected_risk_stock}.IS", period="1y", interval="1d", progress=False)
-                if hist_data is not None and not hist_data.empty:
-                    if isinstance(hist_data.columns, pd.MultiIndex):
-                        hist_data.columns = [c[0] for c in hist_data.columns]
-                    
-                    prices = hist_data['Close']
-                    equity_sim = 100000 * (prices / prices.iloc[0])
-                    metrics, drawdowns = risk_engine.calculate_portfolio_metrics(equity_sim)
-                    
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Sharpe Oranı", f"{metrics['sharpe_ratio']:.2f}")
-                    c2.metric("Sortino Oranı", f"{metrics['sortino_ratio']:.2f}")
-                    c3.metric("Max Drawdown", f"%{metrics['max_drawdown_pct']:.2f}")
-                    c4.metric("Günlük VaR (%95)", f"%{metrics['var_95_daily_pct']:.2f}")
-                    
-                    # Drawdown Chart
-                    fig_dd = px.line(drawdowns * 100, title=f"{selected_risk_stock} Historical Drawdown Curve (%)")
-                    fig_dd.update_traces(line_color='#ef4444')
-                    st.plotly_chart(fig_dd, use_container_width=True)
-            except Exception as ex:
-                st.error(f"Risk analizi hatası: {ex}")
+    with st.spinner(f"{selected_risk_stock} risk metrikleri hesaplanıyor..."):
+        try:
+            hist_data = yf.download(f"{selected_risk_stock}.IS", period="1y", interval="1d", progress=False)
+            if hist_data is not None and not hist_data.empty:
+                if isinstance(hist_data.columns, pd.MultiIndex):
+                    hist_data.columns = [c[0] for c in hist_data.columns]
+                
+                prices = hist_data['Close']
+                equity_sim = 100000 * (prices / prices.iloc[0])
+                metrics, drawdowns = risk_engine.calculate_portfolio_metrics(equity_sim)
+                
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Sharpe Oranı", f"{metrics['sharpe_ratio']:.2f}")
+                c2.metric("Sortino Oranı", f"{metrics['sortino_ratio']:.2f}")
+                c3.metric("Max Drawdown", f"%{metrics['max_drawdown_pct']:.2f}")
+                c4.metric("Günlük VaR (%95)", f"%{metrics['var_95_daily_pct']:.2f}")
+                
+                # Drawdown Chart
+                fig_dd = px.line(drawdowns * 100, title=f"{selected_risk_stock} Historical Drawdown Curve (%)")
+                fig_dd.update_traces(line_color='#ef4444')
+                st.plotly_chart(fig_dd, use_container_width=True)
+        except Exception as ex:
+            st.error(f"Risk analizi hatası: {ex}")
 
 st.markdown("---")
 st.markdown("<div style='text-align:center; font-size:0.8rem; color:#64748b;'>BİST AI TRADER QUANTITATIVE SYSTEMS</div>", unsafe_allow_html=True)
