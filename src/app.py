@@ -98,7 +98,7 @@ page = st.sidebar.radio("SİSTEM ANALİTİK MENÜSÜ", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:"Roboto Mono", monospace;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live (yFinance)<br>VERSION: v3.2-BIST Production</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live (yFinance)<br>VERSION: v3.2-BIST Production</div>", unsafe_allow_html=True)
 
 
 # ==============================================================================
