@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import os
 import sys
-import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 import json
@@ -75,37 +74,14 @@ def load_bist_tickers():
 
 all_tickers_list = load_bist_tickers()
 
-# Rate-Limit Proof Cached Data Fetcher
-@st.cache_data(ttl=1800, show_spinner=False)
-def fetch_stock_history(ticker, period="6mo"):
-    full_t = ticker + '.IS' if not ticker.endswith('.IS') else ticker
-    try:
-        df = yf.download(full_t, period=period, interval="1d", progress=False)
-        if df is not None and not df.empty:
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [c[0] for c in df.columns]
-            return df
-    except Exception:
-        pass
-        
-    # Rate limit fallback synthetic generator so UI NEVER CRASHES or shows blank screen
-    dates = pd.date_range(end=pd.Timestamp.now(), periods=120)
-    p = 100 + np.cumsum(np.random.randn(120)*1.5)
-    return pd.DataFrame({
-        'Open': p * 0.99,
-        'High': p * 1.02,
-        'Low': p * 0.98,
-        'Close': p,
-        'Volume': 5000000
-    }, index=dates)
-
-# Import Engines
+# Import Custom Engines
 try:
     from src.double_confirmation_engine import DoubleConfirmationEngine
     from src.kap_news_scraper import KAPNewsScraper
     from src.news_sentiment import NewsSentimentEngine
     from src.risk_analytics import BorsaNeuronRiskEngine
     from src.vibe_trading import VibeTradingAssistant
+    from src.live_bist_feed import LiveBISTFeedEngine
     confirmation_engine = DoubleConfirmationEngine()
     vibe_assistant = VibeTradingAssistant()
 except Exception as e:
@@ -124,11 +100,11 @@ page = st.sidebar.radio("SİSTEM ANALİTİK MENÜSÜ", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Rate-Limit Protected<br>VERSION: v3.4-BIST Enterprise</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + Live BIST Feed<br>DATA: Live Real-Time<br>VERSION: v3.5-BIST Live</div>", unsafe_allow_html=True)
 
 
 # ==============================================================================
-# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (RATE-LIMIT KORUMALI & KALICI)
+# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (100% LIVE REAL-TIME FEED)
 # ==============================================================================
 if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     st.markdown("### 🚀 Canlı BİST Sinyal & Formasyon Taraması")
@@ -173,14 +149,14 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
         run_button = st.button(f"🧠 {len(target_tickers)} Hissede Taramayı Başlat", type="primary")
 
     if run_button or not st.session_state['scan_results']:
-        with st.spinner("BİST verileri ve 3 Aşamalı Yapay Zeka Sinyalleri işleniyor..."):
+        with st.spinner("Canlı BİST verileri ve 3 Aşamalı Yapay Zeka Sinyalleri işleniyor..."):
             results = []
             all_eval = []
             progress_bar = st.progress(0)
             
             for idx, t in enumerate(target_tickers):
                 try:
-                    df_hist = fetch_stock_history(t, period="6mo")
+                    df_hist, live_p = LiveBISTFeedEngine.get_live_stock_data(t)
                     if df_hist is not None and not df_hist.empty:
                         res = confirmation_engine.analyze_ticker_triple_confirmation(df_hist, ticker_name=t)
                         item = {
@@ -190,7 +166,7 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                             '1. Aşama Formasyon': f"{res['pattern_name']} (%{res['pattern_confidence']})",
                             '2. Aşama AI Olasılık': f"%{res['ml_prob_up_pct']}",
                             '3. Aşama Hisse Uyum': f"%{res['stock_win_rate_pct']} ({res['compliance_status']})",
-                            'Giriş Fiyatı': f"{res['entry_price']} TL",
+                            'Canlı Fiyat': f"{live_p:.2f} TL",
                             'Hedef-1': f"{res['target_1']} TL",
                             'Stop-Loss': f"{res['stop_loss']} TL",
                             'Risk/Ödül': res['risk_reward'],
@@ -240,14 +216,14 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
             st.markdown(f"""
             <div class='terminal-card' style='border-left: 4px solid {card_color};'>
                 <div style='display:flex; justify-content:space-between; align-items:center;'>
-                    <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse']}</span>
+                    <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse']} ({r['Canlı Fiyat']})</span>
                     <span style='font-size:1.1rem; font-weight:700; color:{card_color};'>{r['Nihai Sinyal']}</span>
                 </div>
                 <div style='margin-top:10px; font-size:0.92rem; color:#cbd5e1; line-height:1.6;'>
                     • <b>1. Aşama (Formasyon):</b> {r['1. Aşama Formasyon']}<br>
                     • <b>2. Aşama (Yapay Zekâ Tahmini):</b> {r['2. Aşama AI Olasılık']} Yükseliş Olasılığı<br>
                     • <b>3. Aşama (Hisse Başarım Uyum):</b> {r['3. Aşama Hisse Uyum']}<br>
-                    • <b>Giriş:</b> {r['Giriş Fiyatı']} | <b>Hedef-1:</b> {r['Hedef-1']} | <b>Stop Loss:</b> <span style='color:#ef4444;'>{r['Stop-Loss']}</span> | <b>Risk/Ödül:</b> {r['Risk/Ödül']}
+                    • <b>Canlı Fiyat:</b> {r['Canlı Fiyat']} | <b>Hedef-1:</b> {r['Hedef-1']} | <b>Stop Loss:</b> <span style='color:#ef4444;'>{r['Stop-Loss']}</span> | <b>Risk/Ödül:</b> {r['Risk/Ödül']}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -295,18 +271,18 @@ elif page == "🔍 Tek Hisseli Yapay Zekâ Analizi":
     if st.button("🔍 Detaylı Analizi Başlat", type="primary"):
         with st.spinner(f"{target_stock} detaylı verileri işleniyor..."):
             try:
-                df_stock = fetch_stock_history(target_stock, period=period_choice)
+                df_stock, live_p = LiveBISTFeedEngine.get_live_stock_data(target_stock)
                 if df_stock is not None and not df_stock.empty:
                     res = confirmation_engine.analyze_ticker_triple_confirmation(df_stock, ticker_name=target_stock)
                     
                     col_a, col_b, col_c, col_d = st.columns(4)
                     col_a.metric("Nihai Karar", res['status'])
-                    col_b.metric("Formasyon Güveni", f"%{res['pattern_confidence']}")
+                    col_b.metric("Canlı Fiyat", f"{live_p:.2f} TL")
                     col_c.metric("Yapay Zekâ Yükseliş Prob.", f"%{res['ml_prob_up_pct']}")
                     col_d.metric("Hisse Formasyon Başarısı", f"%{res['stock_win_rate_pct']}")
                     
                     # Chart
-                    fig = px.line(df_stock, y='Close', title=f"{target_stock} Fiyat Grafiği ve Kapanış Trendi", labels={'value': 'Fiyat (TL)', 'Date': 'Tarih'})
+                    fig = px.line(df_stock, y='Close', title=f"{target_stock} Canlı Fiyat Grafiği ve Kapanış Trendi", labels={'value': 'Fiyat (TL)', 'Date': 'Tarih'})
                     fig.update_traces(line_color='#38bdf8')
                     st.plotly_chart(fig, use_container_width=True)
             except Exception as ex:
@@ -326,7 +302,7 @@ elif page == "💼 Portföy Risk & Backtest Radarı":
     if st.button("📊 Risk ve Simülasyonu Çalıştır", type="primary"):
         with st.spinner(f"{selected_risk_stock} risk metrikleri hesaplanıyor..."):
             try:
-                hist_data = fetch_stock_history(selected_risk_stock, period="1y")
+                hist_data, _ = LiveBISTFeedEngine.get_live_stock_data(selected_risk_stock)
                 if hist_data is not None and not hist_data.empty:
                     prices = hist_data['Close']
                     equity_sim = 100000 * (prices / prices.iloc[0])
