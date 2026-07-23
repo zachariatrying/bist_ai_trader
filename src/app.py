@@ -85,7 +85,7 @@ except Exception as e:
     confirmation_engine = None
     vibe_assistant = None
 
-# Sidebar Navigation (4 SADE & NET İŞ İSTASYONU)
+# Sidebar Navigation
 st.sidebar.markdown("<div class='brand-header'>BİST AI TRADER</div>", unsafe_allow_html=True)
 st.sidebar.markdown("<div style='font-size:0.75rem; color:#64748b; margin-top:-5px; margin-bottom:15px;'>KURUMSAL TRADİNG TERMİNALİ</div>", unsafe_allow_html=True)
 
@@ -97,11 +97,11 @@ page = st.sidebar.radio("SİSTEM ANALİTİK MENÜSÜ", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live Real-Time<br>VERSION: v3.6-BIST Executive</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live Real-Time<br>VERSION: v3.7-BIST Live Fix</div>", unsafe_allow_html=True)
 
 
 # ==============================================================================
-# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI
+# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (ALWAYS RENDERING FIX)
 # ==============================================================================
 if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     st.markdown("### 🚀 Canlı BİST Sinyal & Formasyon Taraması")
@@ -137,17 +137,16 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     else:
         target_tickers = all_tickers_list
 
-    # Session State Persistence
-    if 'scan_results' not in st.session_state:
-        st.session_state['scan_results'] = []
+    # Session State Setup
+    if 'scan_data' not in st.session_state:
+        st.session_state['scan_data'] = []
 
     col_btn, col_info = st.columns([1.5, 3])
     with col_btn:
-        run_button = st.button(f"🧠 {len(target_tickers)} Hissede Taramayı Başlat", type="primary")
+        run_button = st.button(f"🚀 {len(target_tickers)} Hissede Taramayı Başlat", type="primary")
 
-    if run_button or not st.session_state['scan_results']:
+    if run_button or len(st.session_state['scan_data']) == 0:
         with st.spinner("Canlı BİST verileri ve 3 Aşamalı Yapay Zeka Sinyalleri işleniyor..."):
-            results = []
             all_eval = []
             progress_bar = st.progress(0)
             
@@ -157,7 +156,7 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                     if df_hist is not None and not df_hist.empty:
                         res = confirmation_engine.analyze_ticker_triple_confirmation(df_hist, ticker_name=t)
                         
-                        # Generate trading rationale
+                        # Strategic rationale
                         if res['triple_confirmed']:
                             rationale = f"Hissede {res['pattern_name']} formasyonu doğrulandı. AI %{res['ml_prob_up_pct']} yükseliş veriyor. Tarihsel uyum %{res['stock_win_rate_pct']} yüksek."
                         elif res['double_confirmed']:
@@ -180,46 +179,52 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                             'Risk/Ödül Oranı': res['risk_reward'],
                             'raw_prob': res['ml_prob_up_pct'],
                             'triple_confirmed': res['triple_confirmed'],
-                            'double_confirmed': res['double_confirmed']
+                            'double_confirmed': res['double_confirmed'],
+                            'pattern_name': res['pattern_name']
                         }
                         all_eval.append(item)
-
-                        # Apply Filters
-                        pass_conf = True
-                        if conf_filter == "🚀 ÜÇLÜ ONAYLI (En Güvenli - Formasyon + AI + Hisse Başarı)":
-                            pass_conf = res['triple_confirmed']
-                        elif conf_filter == "📈 ÇİFTE ONAYLI (Formasyon + AI Teyitli)":
-                            pass_conf = res['double_confirmed'] or res['triple_confirmed']
-                        elif conf_filter == "⚠️ TEK ONAYLI (Sadece Formasyon / Sadece AI)":
-                            pass_conf = not res['triple_confirmed']
-
-                        pass_pat = True
-                        if pattern_type_filter == "Boğa Formasyonları (TOBO, Çanak, Flama, Dip)":
-                            pass_pat = any(k in res['pattern_name'].upper() for k in ['TOBO', 'ÇANAK', 'DİP', 'BAYRAK', 'FLAMA', 'YÜKSELEN'])
-                        elif pattern_type_filter == "Kırılım & Trend Takibi":
-                            pass_pat = any(k in res['pattern_name'].upper() for k in ['KIRILIM', 'TREND', 'KANAL'])
-
-                        if pass_conf and pass_pat:
-                            results.append(item)
                 except Exception:
                     pass
                 progress_bar.progress((idx + 1) / len(target_tickers))
 
-            if not results and all_eval:
-                all_eval.sort(key=lambda x: x['raw_prob'], reverse=True)
-                results = all_eval[:5]
+            st.session_state['scan_data'] = all_eval
 
-            st.session_state['scan_results'] = results
+    # Filter stored scan data dynamically for immediate UI responsiveness
+    raw_results = st.session_state.get('scan_data', [])
+    filtered_results = []
 
-    # Render Results permanently from Session State
-    scan_results = st.session_state.get('scan_results', [])
-    if scan_results:
-        st.success(f"✅ Sinyal Tablosu Gösteriliyor ({len(scan_results)} Hisse)")
-        display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed'], errors='ignore')
+    for r in raw_results:
+        pass_conf = True
+        if conf_filter == "🚀 ÜÇLÜ ONAYLI (En Güvenli - Formasyon + AI + Hisse Başarı)":
+            pass_conf = r['triple_confirmed']
+        elif conf_filter == "📈 ÇİFTE ONAYLI (Formasyon + AI Teyitli)":
+            pass_conf = r['double_confirmed'] or r['triple_confirmed']
+        elif conf_filter == "⚠️ TEK ONAYLI (Sadece Formasyon / Sadece AI)":
+            pass_conf = not r['triple_confirmed']
+
+        pass_pat = True
+        if pattern_type_filter == "Boğa Formasyonları (TOBO, Çanak, Flama, Dip)":
+            pass_pat = any(k in r['pattern_name'].upper() for k in ['TOBO', 'ÇANAK', 'DİP', 'BAYRAK', 'FLAMA', 'YÜKSELEN', 'TREND'])
+        elif pattern_type_filter == "Kırılım & Trend Takibi":
+            pass_pat = any(k in r['pattern_name'].upper() for k in ['KIRILIM', 'TREND', 'KANAL'])
+
+        if pass_conf and pass_pat:
+            filtered_results.append(r)
+
+    # Always fallback to raw results if strict filter yields 0
+    display_results = filtered_results if filtered_results else raw_results
+
+    if display_results:
+        if not filtered_results and raw_results:
+            st.warning("⚠️ Seçtiğiniz dar filtreye birebir uyan hisse bulunamadı. Genel taranan hisse listesi gösteriliyor.")
+        else:
+            st.success(f"✅ Sinyal Tablosu Gösteriliyor ({len(display_results)} Hisse)")
+
+        display_df = pd.DataFrame(display_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed', 'pattern_name'], errors='ignore')
         st.dataframe(display_df, use_container_width=True)
 
         st.markdown("#### 🎯 Pozisyon Kartları & Hedef/Stop Analizi")
-        for r in scan_results[:10]:
+        for r in display_results[:10]:
             card_color = "#10b981" if "ÜÇLÜ ONAYLI" in r['Nihai Karar'] or "ÇİFTE ONAYLI" in r['Nihai Karar'] else "#f59e0b"
             st.markdown(f"""
             <div class='terminal-card' style='border-left: 4px solid {card_color};'>
@@ -267,7 +272,7 @@ elif page == "📰 Canlı KAP & Finansal Haber Analizi":
 
 
 # ==============================================================================
-# MODÜL 3: TEK HİSSELİ YAPAY ZEKÂ ANALİZİ (DETAYLI HEDEF/STOP VE NEDEN ALMALIYIZ)
+# MODÜL 3: TEK HİSSELİ YAPAY ZEKÂ ANALİZİ
 # ==============================================================================
 elif page == "🔍 Tek Hisseli Yapay Zekâ Analizi":
     st.markdown("### 🔍 Tek Hisseli Detaylı Yapay Zekâ Analizi")
