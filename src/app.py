@@ -7,6 +7,8 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 import json
+import warnings
+warnings.filterwarnings('ignore')
 
 # Page Config
 st.set_page_config(
@@ -102,7 +104,7 @@ st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sa
 
 
 # ==============================================================================
-# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (FİLTRELİ & GARANTİ ÇALIŞAN)
+# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (SESSION STATE İLE KALICI)
 # ==============================================================================
 if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     st.markdown("### 🚀 Canlı BİST Sinyal & Formasyon Taraması")
@@ -111,7 +113,7 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     # Filtreler Barı
     col1, col2, col3 = st.columns(3)
     with col1:
-        scan_scope = st.selectbox("1. Tarama Kapsamı:", ["BİST 30 Hisseleri", "BİST 100 Hisseleri", "Özel Hisse Seçimi", "Tüm BİST (537 Hisse)"])
+        scan_scope = st.selectbox("1. Tarama Kapsamı:", ["BİST 30 Hisseleri", "Özel Hisse Seçimi", "BİST 100 Hisseleri", "Tüm BİST (537 Hisse)"])
     with col2:
         conf_filter = st.selectbox("2. Onay Seviyesi Filtresi:", [
             "HEPSİ (Tüm Sinyaller)",
@@ -137,6 +139,10 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
         target_tickers = all_tickers_list[:100]
     else:
         target_tickers = all_tickers_list
+
+    # Session State Initialization
+    if 'scan_results' not in st.session_state:
+        st.session_state['scan_results'] = []
 
     if st.button(f"🧠 Formasyon Taramasını ve AI Teyidini Çalıştır ({len(target_tickers)} Hisse)", type="primary"):
         st.info(f"Formasyon taraması ve 3 Aşamalı AI Doğrulaması {len(target_tickers)} hissede çalıştırılıyor...")
@@ -202,31 +208,34 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
             scan_results = all_evaluated[:5]
             st.warning("💡 Not: Katı filtrelere uyan hisse bulunamadığı için en yüksek yapay zeka skorlu ilk 5 hisse listelenmiştir.")
 
-        if scan_results:
-            st.success(f"✅ Tarama Tamamlandı! Kriterlere Uyan {len(scan_results)} Hisse Bulundu.")
-            
-            # Display Table
-            display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed'], errors='ignore')
-            st.dataframe(display_df, use_container_width=True)
+        st.session_state['scan_results'] = scan_results
 
-            # Display Visual Cards
-            st.markdown("#### 🎯 Sinyal Pozisyon Kartları")
-            for r in scan_results[:10]:
-                card_color = "#10b981" if "ÜÇLÜ ONAYLI" in r['Nihai Sinyal'] or "ÇİFTE ONAYLI" in r['Nihai Sinyal'] else "#f59e0b"
-                st.markdown(f"""
-                <div class='terminal-card' style='border-left: 4px solid {card_color};'>
-                    <div style='display:flex; justify-content:space-between; align-items:center;'>
-                        <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse']}</span>
-                        <span style='font-size:1.1rem; font-weight:700; color:{card_color};'>{r['Nihai Sinyal']}</span>
-                    </div>
-                    <div style='margin-top:10px; font-size:0.92rem; color:#cbd5e1; line-height:1.6;'>
-                        • <b>1. Aşama (Formasyon):</b> {r['1. Aşama Formasyon']}<br>
-                        • <b>2. Aşama (Yapay Zekâ Tahmini):</b> {r['2. Aşama AI Olasılık']} Yükseliş Olasılığı<br>
-                        • <b>3. Aşama (Hisse Başarım Uyum):</b> {r['3. Aşama Hisse Uyum']}<br>
-                        • <b>Giriş:</b> {r['Giriş Fiyatı']} | <b>Hedef-1:</b> {r['Hedef-1']} | <b>Stop Loss:</b> <span style='color:#ef4444;'>{r['Stop-Loss']}</span> | <b>Risk/Ödül:</b> {r['Risk/Ödül']}
-                    </div>
+    # Render Results from Session State
+    scan_results = st.session_state.get('scan_results', [])
+    if scan_results:
+        st.success(f"✅ Sonuçlar Gösteriliyor ({len(scan_results)} Hisse)")
+        display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed'], errors='ignore')
+        st.dataframe(display_df, use_container_width=True)
+
+        st.markdown("#### 🎯 Sinyal Pozisyon Kartları")
+        for r in scan_results[:10]:
+            card_color = "#10b981" if "ÜÇLÜ ONAYLI" in r['Nihai Sinyal'] or "ÇİFTE ONAYLI" in r['Nihai Sinyal'] else "#f59e0b"
+            st.markdown(f"""
+            <div class='terminal-card' style='border-left: 4px solid {card_color};'>
+                <div style='display:flex; justify-content:space-between; align-items:center;'>
+                    <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse']}</span>
+                    <span style='font-size:1.1rem; font-weight:700; color:{card_color};'>{r['Nihai Sinyal']}</span>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style='margin-top:10px; font-size:0.92rem; color:#cbd5e1; line-height:1.6;'>
+                    • <b>1. Aşama (Formasyon):</b> {r['1. Aşama Formasyon']}<br>
+                    • <b>2. Aşama (Yapay Zekâ Tahmini):</b> {r['2. Aşama AI Olasılık']} Yükseliş Olasılığı<br>
+                    • <b>3. Aşama (Hisse Başarım Uyum):</b> {r['3. Aşama Hisse Uyum']}<br>
+                    • <b>Giriş:</b> {r['Giriş Fiyatı']} | <b>Hedef-1:</b> {r['Hedef-1']} | <b>Stop Loss:</b> <span style='color:#ef4444;'>{r['Stop-Loss']}</span> | <b>Risk/Ödül:</b> {r['Risk/Ödül']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("💡 Yukarıdaki 'Formasyon Taramasını ve AI Teyidini Çalıştır' butonuna basarak BİST taramasını başlatabilirsiniz.")
 
 
 # ==============================================================================

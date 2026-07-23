@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import warnings
+warnings.filterwarnings('ignore')
 
 class PredictionEngine:
     def __init__(self, base_dir=None):
