@@ -1,0 +1,10 @@
+.env
+.env.txt
+*.csv
+*.xz
+*.log
+do_fresh_clean_push.js
+__pycache__/
+*.pyc
+.vscode/
+.idea/
