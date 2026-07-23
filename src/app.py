@@ -28,20 +28,17 @@ TERMINAL_CSS = """
         color: #f1f5f9;
     }
     .main { background-color: #0b0f19; }
-    
     .stAppHeader { background-color: rgba(11, 15, 25, 0.9); }
     
-    /* Terminal Card */
     .terminal-card {
         background: #1e293b;
         border: 1px solid #334155;
         border-radius: 8px;
-        padding: 16px 20px;
-        margin-bottom: 12px;
+        padding: 18px 22px;
+        margin-bottom: 16px;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
     }
     
-    /* Metrics */
     div[data-testid="stMetricValue"] {
         font-family: 'Roboto Mono', monospace;
         font-size: 1.4rem !important;
@@ -100,11 +97,11 @@ page = st.sidebar.radio("SİSTEM ANALİTİK MENÜSÜ", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + Live BIST Feed<br>DATA: Live Real-Time<br>VERSION: v3.5-BIST Live</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:0.7rem; color:#475569; font-family:sans-serif;'>ENGINE: XGBoost + Pattern + KAP Scraper<br>DATA: Live Real-Time<br>VERSION: v3.6-BIST Executive</div>", unsafe_allow_html=True)
 
 
 # ==============================================================================
-# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI (100% LIVE REAL-TIME FEED)
+# MODÜL 1: CANLI BİST SİNYAL & FORMASYON TARAMASI
 # ==============================================================================
 if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     st.markdown("### 🚀 Canlı BİST Sinyal & Formasyon Taraması")
@@ -138,7 +135,7 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
     elif scan_scope == "BİST 100 Hisseleri":
         target_tickers = all_tickers_list[:100] if len(all_tickers_list) >= 100 else all_tickers_list
     else:
-        target_tickers = all_tickers_list[:50]
+        target_tickers = all_tickers_list
 
     # Session State Persistence
     if 'scan_results' not in st.session_state:
@@ -159,17 +156,28 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
                     df_hist, live_p = LiveBISTFeedEngine.get_live_stock_data(t)
                     if df_hist is not None and not df_hist.empty:
                         res = confirmation_engine.analyze_ticker_triple_confirmation(df_hist, ticker_name=t)
+                        
+                        # Generate trading rationale
+                        if res['triple_confirmed']:
+                            rationale = f"Hissede {res['pattern_name']} formasyonu doğrulandı. AI %{res['ml_prob_up_pct']} yükseliş veriyor. Tarihsel uyum %{res['stock_win_rate_pct']} yüksek."
+                        elif res['double_confirmed']:
+                            rationale = f"Formasyon ({res['pattern_name']}) ve Yapay Zekâ olumlu (%{res['ml_prob_up_pct']})."
+                        else:
+                            rationale = f"Formasyon ayı veya momentum zayıf (RSI: {res['rsi_14']}). Temkinli olunmalı."
+
                         item = {
-                            'Hisse': t,
-                            'Durum': res['status'],
-                            'Nihai Sinyal': res['final_signal'],
+                            'Hisse Kodu': t,
+                            'Canlı Fiyat': f"{live_p:.2f} TL",
+                            'Nihai Karar': res['final_signal'],
+                            'Neden Almalıyız / Beklemeliyiz?': rationale,
                             '1. Aşama Formasyon': f"{res['pattern_name']} (%{res['pattern_confidence']})",
                             '2. Aşama AI Olasılık': f"%{res['ml_prob_up_pct']}",
                             '3. Aşama Hisse Uyum': f"%{res['stock_win_rate_pct']} ({res['compliance_status']})",
-                            'Canlı Fiyat': f"{live_p:.2f} TL",
-                            'Hedef-1': f"{res['target_1']} TL",
-                            'Stop-Loss': f"{res['stop_loss']} TL",
-                            'Risk/Ödül': res['risk_reward'],
+                            'Giriş Fiyatı': f"{res['entry_price']} TL",
+                            'Hedef-1 (Kısa Vade T+5)': f"{res['target_1']} TL",
+                            'Hedef-2 (Orta Vade T+15)': f"{res['target_2']} TL",
+                            'Stop-Loss (Zarar Kes)': f"{res['stop_loss']} TL",
+                            'Risk/Ödül Oranı': res['risk_reward'],
                             'raw_prob': res['ml_prob_up_pct'],
                             'triple_confirmed': res['triple_confirmed'],
                             'double_confirmed': res['double_confirmed']
@@ -210,20 +218,23 @@ if page == "🚀 Canlı BİST Sinyal & Formasyon Taraması":
         display_df = pd.DataFrame(scan_results).drop(columns=['raw_prob', 'triple_confirmed', 'double_confirmed'], errors='ignore')
         st.dataframe(display_df, use_container_width=True)
 
-        st.markdown("#### 🎯 Sinyal Pozisyon Kartları")
+        st.markdown("#### 🎯 Pozisyon Kartları & Hedef/Stop Analizi")
         for r in scan_results[:10]:
-            card_color = "#10b981" if "ÜÇLÜ ONAYLI" in r['Nihai Sinyal'] or "ÇİFTE ONAYLI" in r['Nihai Sinyal'] else "#f59e0b"
+            card_color = "#10b981" if "ÜÇLÜ ONAYLI" in r['Nihai Karar'] or "ÇİFTE ONAYLI" in r['Nihai Karar'] else "#f59e0b"
             st.markdown(f"""
             <div class='terminal-card' style='border-left: 4px solid {card_color};'>
                 <div style='display:flex; justify-content:space-between; align-items:center;'>
-                    <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse']} ({r['Canlı Fiyat']})</span>
-                    <span style='font-size:1.1rem; font-weight:700; color:{card_color};'>{r['Nihai Sinyal']}</span>
+                    <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{r['Hisse Kodu']} ({r['Canlı Fiyat']})</span>
+                    <span style='font-size:1.1rem; font-weight:700; color:{card_color};'>{r['Nihai Karar']}</span>
                 </div>
-                <div style='margin-top:10px; font-size:0.92rem; color:#cbd5e1; line-height:1.6;'>
-                    • <b>1. Aşama (Formasyon):</b> {r['1. Aşama Formasyon']}<br>
-                    • <b>2. Aşama (Yapay Zekâ Tahmini):</b> {r['2. Aşama AI Olasılık']} Yükseliş Olasılığı<br>
-                    • <b>3. Aşama (Hisse Başarım Uyum):</b> {r['3. Aşama Hisse Uyum']}<br>
-                    • <b>Canlı Fiyat:</b> {r['Canlı Fiyat']} | <b>Hedef-1:</b> {r['Hedef-1']} | <b>Stop Loss:</b> <span style='color:#ef4444;'>{r['Stop-Loss']}</span> | <b>Risk/Ödül:</b> {r['Risk/Ödül']}
+                <div style='margin-top:10px; font-size:0.95rem; color:#cbd5e1; line-height:1.7;'>
+                    • <b>💡 Neden Almalıyız / Beklemeliyiz?:</b> <mark>{r['Neden Almalıyız / Beklemeliyiz?']}</mark><br>
+                    • <b>1. Aşama Formasyon:</b> {r['1. Aşama Formasyon']}<br>
+                    • <b>2. Aşama AI Yükseliş Olasılığı:</b> {r['2. Aşama AI Olasılık']}<br>
+                    • <b>3. Aşama Hisse Uyum:</b> {r['3. Aşama Hisse Uyum']}<br>
+                    • <b>📍 Giriş Fiyatı:</b> <span style='color:#38bdf8; font-weight:bold;'>{r['Giriş Fiyatı']}</span><br>
+                    • <b>🎯 Hedef 1 (Kısa Vade T+5):</b> <span style='color:#10b981; font-weight:bold;'>{r['Hedef-1 (Kısa Vade T+5)']}</span> | <b>🎯 Hedef 2 (Orta Vade T+15):</b> <span style='color:#10b981; font-weight:bold;'>{r['Hedef-2 (Orta Vade T+15)']}</span><br>
+                    • <b>🛑 Stop-Loss (Zarar Kes):</b> <span style='color:#ef4444; font-weight:bold;'>{r['Stop-Loss (Zarar Kes)']}</span> | <b>⚖️ Risk/Ödül Oranı:</b> {r['Risk/Ödül Oranı']}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -256,15 +267,15 @@ elif page == "📰 Canlı KAP & Finansal Haber Analizi":
 
 
 # ==============================================================================
-# MODÜL 3: TEK HİSSELİ YAPAY ZEKÂ ANALİZİ
+# MODÜL 3: TEK HİSSELİ YAPAY ZEKÂ ANALİZİ (DETAYLI HEDEF/STOP VE NEDEN ALMALIYIZ)
 # ==============================================================================
 elif page == "🔍 Tek Hisseli Yapay Zekâ Analizi":
     st.markdown("### 🔍 Tek Hisseli Detaylı Yapay Zekâ Analizi")
-    st.markdown("Seçilen BİST hissesinin grafik formasyonlarını, teknik göstergelerini ve AI tahmin parametrelerini detaylı inceler.")
+    st.markdown("Seçilen BİST hissesinin **formasyonlarını, hedeflerini, stop seviyelerini ve neden almamız gerektiğini** detaylı açıklar.")
 
     col1, col2 = st.columns([2, 1])
     with col1:
-        target_stock = st.selectbox("Hisse Seçin:", all_tickers_list, index=0)
+        target_stock = st.selectbox("Analiz Edilecek Hissedarı Seçin:", all_tickers_list, index=0)
     with col2:
         period_choice = st.selectbox("Grafik Periyodu:", ["3mo", "6mo", "1y", "2y"], index=1)
 
@@ -275,11 +286,36 @@ elif page == "🔍 Tek Hisseli Yapay Zekâ Analizi":
                 if df_stock is not None and not df_stock.empty:
                     res = confirmation_engine.analyze_ticker_triple_confirmation(df_stock, ticker_name=target_stock)
                     
-                    col_a, col_b, col_c, col_d = st.columns(4)
-                    col_a.metric("Nihai Karar", res['status'])
-                    col_b.metric("Canlı Fiyat", f"{live_p:.2f} TL")
-                    col_c.metric("Yapay Zekâ Yükseliş Prob.", f"%{res['ml_prob_up_pct']}")
-                    col_d.metric("Hisse Formasyon Başarısı", f"%{res['stock_win_rate_pct']}")
+                    # Core Executive Metrics
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Nihai Karar", res['status'])
+                    c2.metric("Canlı Fiyat", f"{live_p:.2f} TL")
+                    c3.metric("Yapay Zekâ Prob.", f"%{res['ml_prob_up_pct']}")
+                    c4.metric("Hisse Formasyon Uyum", f"%{res['stock_win_rate_pct']}")
+
+                    st.markdown("---")
+                    
+                    # Detailed Trading Targets & Stop Loss Card
+                    st.markdown("#### 🎯 Alım-Satım Seviyeleri ve Stratejik Gerekçe")
+                    st.markdown(f"""
+                    <div class='terminal-card' style='border-left: 5px solid #38bdf8;'>
+                        <h4 style='color:#38bdf8; margin-top:0;'>💡 Neden Almalıyız / Beklemeliyiz?</h4>
+                        <p style='font-size:1.05rem; line-height:1.7; color:#f1f5f9;'>
+                            • <b>Tespit Edilen Formasyon:</b> <mark>{res['pattern_name']}</mark> ({res['pattern_type']} - Güven: %{res['pattern_confidence']})<br>
+                            • <b>Tüm Çıkan Formasyonlar:</b> {', '.join(res['all_patterns'])}<br>
+                            • <b>RSI (14) Göstergesi:</b> {res['rsi_14']} (Momentum Durumu)<br>
+                            • <b>Tarihsel Uyum:</b> {res['compliance_status']} (%{res['stock_win_rate_pct']})<br>
+                            • <b>Stratejik Yorum:</b> Hissede {res['pattern_name']} formasyonu aktif olup yapay zekâ %{res['ml_prob_up_pct']} yükseliş olasılığı öngörmektedir.
+                        </p>
+                        <hr style='border-color:#334155;'>
+                        <div style='display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size:1rem;'>
+                            <div><b>📍 Giriş Fiyatı:</b><br><span style='color:#38bdf8; font-size:1.2rem; font-weight:bold;'>{res['entry_price']} TL</span></div>
+                            <div><b>🎯 Hedef 1 (T+5):</b><br><span style='color:#10b981; font-size:1.2rem; font-weight:bold;'>{res['target_1']} TL</span></div>
+                            <div><b>🎯 Hedef 2 (T+15):</b><br><span style='color:#10b981; font-size:1.2rem; font-weight:bold;'>{res['target_2']} TL</span></div>
+                            <div><b>🛑 Stop-Loss:</b><br><span style='color:#ef4444; font-size:1.2rem; font-weight:bold;'>{res['stop_loss']} TL</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
                     # Chart
                     fig = px.line(df_stock, y='Close', title=f"{target_stock} Canlı Fiyat Grafiği ve Kapanış Trendi", labels={'value': 'Fiyat (TL)', 'Date': 'Tarih'})
